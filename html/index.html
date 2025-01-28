@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            display: none;
+            font-family: Arial, sans-serif;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 800px;
+            border-radius: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        th {
+            background-color: rgba(0, 150, 0, 0.5);
+        }
+        tr:nth-child(even) {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .close-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            background-color: #f44336;
+            border: none;
+            color: white;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <button class="close-button" onclick="closeStats()">X</button>
+    <h2>Vehicle Usage Statistics</h2>
+    <table id="statsTable">
+        <thead>
+            <tr>
+                <th>Vehicle Name</th>
+                <th>Times Spawned</th>
+                <th>Total Drive Time</th>
+                <th>Current Session</th>
+            </tr>
+        </thead>
+        <tbody id="statsBody"></tbody>
+    </table>
+    <script>
+        let activeVehicle = null;
+        let sessionStart = 0;
+        let sessionTimers = {};
+
+        function updateTimer(vehicleName) {
+            if (!sessionTimers[vehicleName]) return;
+            
+            const cell = sessionTimers[vehicleName];
+            const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+            const hours = Math.floor(elapsed / 3600);
+            const minutes = Math.floor((elapsed % 3600) / 60);
+            const seconds = elapsed % 60;
+            
+            cell.textContent = hours > 0 ? 
+                `${hours}h ${minutes}m ${seconds}s` : 
+                minutes > 0 ? 
+                    `${minutes}m ${seconds}s` : 
+                    `${seconds}s`;
+        }
+
+        window.addEventListener('message', function(event) {
+            if (event.data.type === 'showStats') {
+                document.body.style.display = 'block';
+                const stats = event.data.stats;
+                const tbody = document.getElementById('statsBody');
+                tbody.innerHTML = '';
+                sessionTimers = {};
+                
+                stats.forEach(stat => {
+                    const row = tbody.insertRow();
+                    row.insertCell(0).textContent = stat.vehicleName;
+                    row.insertCell(1).textContent = stat.spawns;
+                    row.insertCell(2).textContent = stat.formattedTime;
+                    const sessionCell = row.insertCell(3);
+                    sessionCell.textContent = '0s';
+                    
+                    if (stat.isActive) {
+                        activeVehicle = stat.vehicleName;
+                        sessionStart = Date.now() - (stat.currentSession * 1000);
+                        sessionTimers[stat.vehicleName] = sessionCell;
+                    }
+                });
+            } else if (event.data.type === 'updateSession') {
+                activeVehicle = event.data.vehicleName;
+                sessionStart = Date.now();
+                const tbody = document.getElementById('statsBody');
+                const rows = tbody.getElementsByTagName('tr');
+                
+                for (let row of rows) {
+                    if (row.cells[0].textContent === activeVehicle) {
+                        sessionTimers[activeVehicle] = row.cells[3];
+                        break;
+                    }
+                }
+            } else if (event.data.type === 'resetSession') {
+                // Clear all session timers
+                activeVehicle = null;
+                sessionStart = 0;
+                sessionTimers = {};
+                
+                // Update UI to show 0s for all current sessions
+                const cells = document.getElementsByTagName('td');
+                for (let cell of cells) {
+                    if (cell.cellIndex === 3) { // Current Session column
+                        cell.textContent = '0s';
+                    }
+                }
+            }
+        });
+
+        // Update active timer every second
+        setInterval(() => {
+            if (activeVehicle) {
+                updateTimer(activeVehicle);
+            }
+        }, 1000);
+
+        function closeStats() {
+            document.body.style.display = 'none';
+            fetch('https://vehdatascience/closeStats', {
+                method: 'POST'
+            });
+        }
+    </script>
+</body>
+</html>
