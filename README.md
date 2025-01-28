@@ -71,6 +71,5 @@ If you need help:
 4. Review server console for errors
 
 ## Credits
-Created by [Your Name]
-Version 1.0.0
+Created by [SPCCKZ]
 
