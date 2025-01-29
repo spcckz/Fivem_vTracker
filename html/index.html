@@ -16,10 +16,14 @@
             max-width: 800px;
             border-radius: 5px;
         }
+        .table-container {
+            max-height: 800px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
         }
         th, td {
             padding: 10px;
@@ -28,9 +32,22 @@
         }
         th {
             background-color: rgba(0, 150, 0, 0.5);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            cursor: pointer;
+        }
+        th.sort-asc::after {
+            content: " \2191";
+        }
+        th.sort-desc::after {
+            content: " \2193";
         }
         tr:nth-child(even) {
             background-color: rgba(255, 255, 255, 0.1);
+        }
+        tr.active {
+            background-color: #4ca9da !important;
         }
         .close-button {
             position: absolute;
@@ -43,26 +60,58 @@
             cursor: pointer;
             border-radius: 3px;
         }
+        .button-group {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .toggle-button {
+            padding: 8px 16px;
+            background-color: rgba(0, 150, 0, 0.3);
+            border: 1px solid rgba(0, 150, 0, 0.5);
+            color: white;
+            cursor: pointer;
+            border-radius: 3px;
+            transition: background-color 0.3s;
+        }
+
+        .toggle-button.active {
+            background-color: rgba(0, 150, 0, 0.8);
+        }
+
+        .toggle-button:hover {
+            background-color: rgba(0, 150, 0, 0.6);
+        }
     </style>
 </head>
 <body>
     <button class="close-button" onclick="closeStats()">X</button>
     <h2>Vehicle Usage Statistics</h2>
-    <table id="statsTable">
-        <thead>
-            <tr>
-                <th>Vehicle Name</th>
-                <th>Times Spawned</th>
-                <th>Total Drive Time</th>
-                <th>Current Session</th>
-            </tr>
-        </thead>
-        <tbody id="statsBody"></tbody>
-    </table>
+    <div class="button-group">
+        <button class="toggle-button active" onclick="showTracked()">Tracked Vehicles</button>
+        <button class="toggle-button" onclick="showUntracked()">Untracked Vehicles</button>
+    </div>
+    <div class="table-container">
+        <table id="statsTable">
+            <thead>
+                <tr>
+                    <th onclick="sortTable('vehicleName')">Vehicle Name</th>
+                    <th onclick="sortTable('spawns')">Times Spawned</th>
+                    <th onclick="sortTable('formattedTime')">Total Drive Time</th>
+                    <th onclick="sortTable('currentSession')">Current Session</th>
+                </tr>
+            </thead>
+            <tbody id="statsBody"></tbody>
+        </table>
+    </div>
     <script>
         let activeVehicle = null;
         let sessionStart = 0;
         let sessionTimers = {};
+        let allVehicles = [];
+        let trackedStats = [];
+        let currentSort = { key: 'vehicleName', ascending: true };
 
         function updateTimer(vehicleName) {
             if (!sessionTimers[vehicleName]) return;
@@ -80,28 +129,81 @@
                     `${seconds}s`;
         }
 
+        function showTracked() {
+            document.querySelectorAll('.toggle-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelector('.toggle-button:first-child').classList.add('active');
+            updateTable(trackedStats);
+        }
+
+        function showUntracked() {
+            document.querySelectorAll('.toggle-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelector('.toggle-button:last-child').classList.add('active');
+            
+            const untrackedVehicles = allVehicles.filter(vehicle => 
+                !trackedStats.some(stat => stat.vehicleName === vehicle)
+            ).map(vehicle => ({
+                vehicleName: vehicle,
+                spawns: 0,
+                formattedTime: '0s',
+                isActive: false
+            }));
+            
+            updateTable(untrackedVehicles);
+        }
+
+        function updateTable(data) {
+            const tbody = document.getElementById('statsBody');
+            tbody.innerHTML = '';
+            sessionTimers = {};
+            
+            data.forEach(stat => {
+                const row = tbody.insertRow();
+                row.insertCell(0).textContent = stat.vehicleName;
+                row.insertCell(1).textContent = stat.spawns;
+                row.insertCell(2).textContent = stat.formattedTime;
+                const sessionCell = row.insertCell(3);
+                sessionCell.textContent = '0s';
+                
+                if (stat.isActive) {
+                    row.classList.add('active');
+                    activeVehicle = stat.vehicleName;
+                    sessionStart = Date.now() - (stat.currentSession * 1000);
+                    sessionTimers[stat.vehicleName] = sessionCell;
+                }
+            });
+        }
+
+        function sortTable(key) {
+            currentSort.key = key;
+            currentSort.ascending = !currentSort.ascending;
+            document.querySelectorAll('th').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
+            const sortedData = [...trackedStats].sort((a, b) => {
+                if (key === 'formattedTime' || key === 'currentSession') {
+                    const aTime = typeof a[key] === 'string' ? a[key].split(' ').reduce((acc, time) => {
+                        const [value, unit] = time.match(/\d+|\D+/g);
+                        return acc + (unit === 'h' ? parseInt(value) * 3600 : unit === 'm' ? parseInt(value) * 60 : parseInt(value));
+                    }, 0) : a[key];
+                    const bTime = typeof b[key] === 'string' ? b[key].split(' ').reduce((acc, time) => {
+                        const [value, unit] = time.match(/\d+|\D+/g);
+                        return acc + (unit === 'h' ? parseInt(value) * 3600 : unit === 'm' ? parseInt(value) * 60 : parseInt(value));
+                    }, 0) : b[key];
+                    return currentSort.ascending ? aTime - bTime : bTime - aTime;
+                }
+                if (key === 'spawns') {
+                    return currentSort.ascending ? a[key] - b[key] : b[key] - a[key];
+                }
+                return currentSort.ascending ? a[key].localeCompare(b[key]) : b[key].localeCompare(a[key]);
+            });
+            document.querySelector(`th[onclick="sortTable('${key}')"]`).classList.add(currentSort.ascending ? 'sort-asc' : 'sort-desc');
+            updateTable(sortedData);
+        }
+
         window.addEventListener('message', function(event) {
             if (event.data.type === 'showStats') {
                 document.body.style.display = 'block';
-                const stats = event.data.stats;
-                const tbody = document.getElementById('statsBody');
-                tbody.innerHTML = '';
-                sessionTimers = {};
-                
-                stats.forEach(stat => {
-                    const row = tbody.insertRow();
-                    row.insertCell(0).textContent = stat.vehicleName;
-                    row.insertCell(1).textContent = stat.spawns;
-                    row.insertCell(2).textContent = stat.formattedTime;
-                    const sessionCell = row.insertCell(3);
-                    sessionCell.textContent = '0s';
-                    
-                    if (stat.isActive) {
-                        activeVehicle = stat.vehicleName;
-                        sessionStart = Date.now() - (stat.currentSession * 1000);
-                        sessionTimers[stat.vehicleName] = sessionCell;
-                    }
-                });
+                trackedStats = event.data.stats;
+                allVehicles = event.data.allVehicles || [];
+                showTracked(); // Default to tracked view
             } else if (event.data.type === 'updateSession') {
                 activeVehicle = event.data.vehicleName;
                 sessionStart = Date.now();
@@ -111,6 +213,7 @@
                 for (let row of rows) {
                     if (row.cells[0].textContent === activeVehicle) {
                         sessionTimers[activeVehicle] = row.cells[3];
+                        row.classList.add('active');
                         break;
                     }
                 }
@@ -126,6 +229,10 @@
                     if (cell.cellIndex === 3) { // Current Session column
                         cell.textContent = '0s';
                     }
+                }
+                const rows = document.getElementsByTagName('tr');
+                for (let row of rows) {
+                    row.classList.remove('active');
                 }
             }
         });
