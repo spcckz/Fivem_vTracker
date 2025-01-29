@@ -17,27 +17,26 @@ function isDriver(vehicle) {
 
 // Helper function to start tracking
 function startTracking(vehicle) {
-    if (!isDriver(vehicle)) return; // Only track if player is driver
+    if (!isDriver(vehicle)) return;
     
     const vehicleName = getVehicleName(vehicle);
-    if (!trackedVehicles.has(vehicle)) {
-        trackedVehicles.add(vehicle);
-        emitNet('vehdatascience:vehicleSpawned', vehicleName);
-    }
-    startTimes.set(vehicle, GetGameTimer());
-    console.log(`Started/Resumed tracking ${vehicleName}`);
+    emitNet('vehdatascience:validateVehicle', vehicleName, (isValid) => {
+        if (isValid) {
+            if (!trackedVehicles.has(vehicle)) {
+                trackedVehicles.add(vehicle);
+                emitNet('vehdatascience:vehicleSpawned', vehicleName);
+            }
+            emitNet('vehdatascience:startVehicleSession', vehicleName, NetworkGetNetworkIdFromEntity(vehicle));
+            startTimes.set(vehicle, GetGameTimer());
+            console.log(`Started/Resumed tracking ${vehicleName}`);
+        }
+    });
 }
 
 // Helper function to stop tracking and save time
 function stopTracking(vehicle) {
     if (startTimes.has(vehicle) && isDriver(vehicle)) {
-        const vehicleName = getVehicleName(vehicle);
-        const startTime = startTimes.get(vehicle);
-        const usageTime = (GetGameTimer() - startTime) / 1000;
-        
-        emitNet('vehdatascience:vehicleUsed', vehicleName, usageTime);
-        console.log(`Vehicle ${vehicleName} usage logged: ${usageTime} seconds`);
-        
+        emitNet('vehdatascience:endVehicleSession');
         startTimes.delete(vehicle);
     }
 }
@@ -120,8 +119,8 @@ RegisterCommand('vehiclestats', (source, args) => {
     emitNet('vehdatascience:requestStats');
 }, false);
 
-// Update the stats listener to include active vehicle
-onNet('vehdatascience:receiveStats', (stats) => {
+// Update the stats listener to handle new data structure
+onNet('vehdatascience:receiveStats', (data) => {
     const player = PlayerPedId();
     if (IsPedInAnyVehicle(player, false)) {
         const vehicle = GetVehiclePedIsIn(player, false);
@@ -130,7 +129,7 @@ onNet('vehdatascience:receiveStats', (stats) => {
         const currentSession = startTime ? (GetGameTimer() - startTime) / 1000 : 0;
         
         // Add current session info to stats
-        stats = stats.map(stat => ({
+        data.stats = data.stats.map(stat => ({
             ...stat,
             isActive: stat.vehicleName === vehicleName,
             currentSession
@@ -140,6 +139,7 @@ onNet('vehdatascience:receiveStats', (stats) => {
     SetNuiFocus(true, true);
     SendNuiMessage(JSON.stringify({
         type: 'showStats',
-        stats: stats
+        stats: data.stats,
+        allVehicles: data.allVehicles
     }));
 });
