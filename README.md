@@ -11,6 +11,8 @@ A powerful FiveM vehicle analytics tool that tracks spawn frequency and usage ti
   - Total drive time per vehicle
   - Active session timing
 
+## Preview Video
+[![preview](https://img.youtube.com/vi/G6wZ2GXrrIU/maxresdefault.jpg)](https://youtu.be/G6wZ2GXrrIU) 
 ## Requirements
 ### Required
 - FiveM Server
