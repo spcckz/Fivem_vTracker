@@ -58,6 +58,25 @@ function loadVMenuVehicles() {
     }
 }
 
+// Store valid vehicles globally
+let validVehicles = [];
+
+// Function to initialize valid vehicles
+function initializeValidVehicles() {
+    try {
+        validVehicles = loadVMenuVehicles();
+        console.log(`Initialized ${validVehicles.length} valid vehicles for tracking`);
+    } catch (error) {
+        console.error('Failed to initialize valid vehicles:', error);
+        validVehicles = [];
+    }
+}
+
+// Function to check if vehicle should be tracked
+function isValidVehicle(vehicleName) {
+    return validVehicles.includes(vehicleName.toLowerCase());
+}
+
 // Remove getDefaultVehicleList function as it's no longer needed
 
 let vehicleData = {};
@@ -201,14 +220,27 @@ function generateHTMLReport() {
 
 // Register network event handlers
 onNet('vehdatascience:vehicleSpawned', (vehicleName) => {
-    logVehicleSpawn(vehicleName);
+    if (isValidVehicle(vehicleName)) {
+        logVehicleSpawn(vehicleName);
+    }
 });
 
 onNet('vehdatascience:vehicleUsed', (vehicleName, usageTime) => {
+    if (isValidVehicle(vehicleName)) {
+        logVehicleUsage(vehicleName, usageTime);
+    }
+});
+
+// Add handlers for server.lua events
+on('vehdatascience:saveVehicleUsage', (vehicleName, usageTime) => {
     logVehicleUsage(vehicleName, usageTime);
 });
 
-// Update the command handler to use NUI
+on('vehdatascience:logVehicleSpawn', (vehicleName) => {
+    logVehicleSpawn(vehicleName);
+});
+
+// Update the command handler to include all vehicles
 onNet('vehdatascience:requestStats', () => {
     const source = global.source;
     try {
@@ -219,7 +251,13 @@ onNet('vehdatascience:requestStats', () => {
             formattedTime: formatTime(v.usageTime || 0)
         }));
         
-        emitNet('vehdatascience:receiveStats', source, statsForNui);
+        // Get the complete vehicle list from vMenu
+        const allVehicles = loadVMenuVehicles();
+        
+        emitNet('vehdatascience:receiveStats', source, {
+            stats: statsForNui,
+            allVehicles: allVehicles
+        });
         console.log('Vehicle stats sent to client');
     } catch (error) {
         console.error('Error preparing stats for NUI:', error);
@@ -339,6 +377,9 @@ console.log('Automatic hourly stats generation enabled');
 // Replace config.json loading with vMenu config
 const vehicles = loadVMenuVehicles();
 console.log(`Loaded ${vehicles.length} vehicles ${vehicles.length > 0 ? 'from config' : 'using defaults'}`);
+
+// Initialize valid vehicles on resource start
+initializeValidVehicles();
 
 // Export functions for use in other scripts
 module.exports = {
